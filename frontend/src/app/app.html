@@ -1,0 +1,261 @@
+<div class="app-shell">
+  <!-- TOP NAVIGATION / HEADER -->
+  <header class="navbar glass-panel">
+    <div class="nav-brand">
+      <div class="brand-logo">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00d2ff" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="m4.93 4.93 4.24 4.24"/>
+          <path d="m14.83 9.17 4.24-4.24"/>
+          <path d="m14.83 14.83 4.24 4.24"/>
+          <path d="m9.17 14.83-4.24 4.24"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-row">
+          <h1 class="brand-title">VIGILANTE</h1>
+          <span class="badge badge-cyan">Copernicus CDSE</span>
+        </div>
+        <p class="brand-tagline">Monitor Satelital "Antes/Después" de Desastres Naturales con Sentinel-2</p>
+      </div>
+    </div>
+
+    <!-- Right Header Badges & Actions -->
+    <div class="nav-actions">
+      <!-- CDSE Status Pill -->
+      <button 
+        class="status-pill" 
+        [class.connected]="apiStatus?.cdseConfigured"
+        (click)="toggleCredsModal()"
+        title="Ver estado de conexión con Copernicus Data Space Ecosystem">
+        <span class="pulse-indicator"></span>
+        <span *ngIf="apiStatus?.cdseConfigured">CDSE OAuth Conectado</span>
+        <span *ngIf="!apiStatus?.cdseConfigured">Modo Demo / Calibrado</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+        </svg>
+      </button>
+
+      <a href="https://dataspace.copernicus.eu" target="_blank" rel="noopener" class="nav-link-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+        Copernicus Data Space
+      </a>
+    </div>
+  </header>
+
+  <!-- QUICK PRESET CASES STRIP -->
+  <section class="presets-section">
+    <div class="presets-label">
+      <span class="fire-icon">🛰️</span>
+      <span>Casos de Estudio Históricos (Perú):</span>
+    </div>
+    <div class="presets-scroll">
+      <button 
+        *ngFor="let p of presets" 
+        class="preset-card"
+        [class.active]="selectedPreset?.id === p.id"
+        (click)="selectPreset(p)">
+        <div class="preset-badge" [ngClass]="p.eventType">
+          {{ p.eventType }}
+        </div>
+        <div class="preset-info">
+          <strong class="preset-title">{{ p.title }}</strong>
+          <span class="preset-sub">{{ p.location }} &bull; {{ p.dateBefore | date:'yyyy' }}</span>
+        </div>
+      </button>
+    </div>
+  </section>
+
+  <!-- MAIN WORKSPACE GRID -->
+  <main class="main-grid">
+    <!-- LEFT PANEL: MAP & PARAMETERS -->
+    <div class="left-panel">
+      <!-- Interactive Leaflet Map Selector -->
+      <app-map-selector 
+        #mapSelector
+        [currentBbox]="currentBbox"
+        (bboxChange)="onBboxChange($event)">
+      </app-map-selector>
+
+      <!-- Analysis Parameters Card -->
+      <div class="config-card glass-panel">
+        <div class="card-header">
+          <h3 class="card-title">Configuración del Sensor Sentinel-2</h3>
+          <span class="card-hint">Sentinel-2 L2A BOA Reflectance</span>
+        </div>
+
+        <div class="card-body">
+          <!-- Event Type -->
+          <div class="form-group">
+            <label class="form-label">Tipo de Evento</label>
+            <div class="segmented-control">
+              <button 
+                type="button" 
+                class="seg-btn" 
+                [class.active]="eventType === 'huaico'" 
+                (click)="onEventTypeChange('huaico')">
+                ⛰️ Huaico
+              </button>
+              <button 
+                type="button" 
+                class="seg-btn" 
+                [class.active]="eventType === 'incendio'" 
+                (click)="onEventTypeChange('incendio')">
+                🔥 Incendio
+              </button>
+              <button 
+                type="button" 
+                class="seg-btn" 
+                [class.active]="eventType === 'inundacion'" 
+                (click)="onEventTypeChange('inundacion')">
+                🌊 Inundación
+              </button>
+            </div>
+          </div>
+
+          <!-- Visualization / Evalscript Mode -->
+          <div class="form-group">
+            <label class="form-label">Composición Espectral (Evalscript)</label>
+            <select class="form-select" [(ngModel)]="visualizationMode">
+              <option value="true_color">RGB Natural (B04, B03, B02) — Visión Real</option>
+              <option value="false_color_swir">Falso Color SWIR/NIR (B12, B8A, B04) — Lodo / Suelo / Quemado</option>
+              <option value="ndwi">NDWI (B03, B08) — Índice Normalizado de Agua</option>
+              <option value="nbr">NBR (B08, B12) — Severidad de Incendios</option>
+            </select>
+          </div>
+
+          <!-- Dual Date Range -->
+          <div class="dates-row">
+            <div class="form-group flex-1">
+              <label class="form-label">
+                <span class="text-emerald">●</span> Fecha "Antes"
+              </label>
+              <input type="date" class="form-input" [(ngModel)]="dateBefore" />
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">
+                <span class="text-rose">●</span> Fecha "Después"
+              </label>
+              <input type="date" class="form-input" [(ngModel)]="dateAfter" />
+            </div>
+          </div>
+
+          <!-- Cloud Cover Filter -->
+          <div class="form-group">
+            <div class="slider-header">
+              <label class="form-label">Tolerancia Máx. de Nubosidad</label>
+              <span class="slider-val">{{ maxCloudCoverage }}%</span>
+            </div>
+            <input 
+              type="range" 
+              min="5" 
+              max="60" 
+              step="5" 
+              [(ngModel)]="maxCloudCoverage" 
+              class="form-range" />
+            <div class="range-labels">
+              <span>Baja nubosidad (5%)</span>
+              <span>Moderada (60%)</span>
+            </div>
+          </div>
+
+          <!-- Error Alert Banner -->
+          <div class="error-alert" *ngIf="errorMessage">
+            <span>⚠️ {{ errorMessage }}</span>
+          </div>
+
+          <!-- Run Analysis Action Button -->
+          <button 
+            class="btn-primary run-btn" 
+            (click)="runAnalysis()" 
+            [disabled]="isLoading">
+            <svg *ngIf="!isLoading" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <div *ngIf="isLoading" class="spinner"></div>
+            <span>{{ isLoading ? 'Consultando Sentinel Hub...' : 'Comparar Escenas Sentinel-2' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: COMPARISON STUDIO & EVALUATION -->
+    <div class="right-panel">
+      <app-comparison-viewer
+        [response]="compareResponse"
+        [isLoading]="isLoading"
+        [loadingStepText]="loadingStepText">
+      </app-comparison-viewer>
+
+      <!-- Educational / Spectral Context Card -->
+      <div class="info-card glass-panel" *ngIf="selectedPreset">
+        <div class="info-header">
+          <div class="info-icon-badge">📋</div>
+          <div>
+            <h4 class="info-title">Ficha Técnica: {{ selectedPreset.title }}</h4>
+            <p class="info-subtitle">{{ selectedPreset.location }} &bull; Región {{ selectedPreset.department }}</p>
+          </div>
+        </div>
+        <p class="info-desc">{{ selectedPreset.description }}</p>
+        <div class="impact-box">
+          <strong>Impacto documentado:</strong> {{ selectedPreset.historicalImpact }}
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- CDSE CREDENTIALS MODAL -->
+  <div class="modal-backdrop" *ngIf="showCredsModal" (click)="toggleCredsModal()">
+    <div class="modal-content glass-panel" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="satellite-pill">Copernicus Data Space Ecosystem</div>
+          <h3>Configuración OAuth de Sentinel Hub</h3>
+        </div>
+        <button class="close-btn" (click)="toggleCredsModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-intro">
+          Vigilante se conecta al nuevo <strong>Copernicus Data Space Ecosystem (CDSE)</strong> mediante autenticación OAuth2 (Client Credentials).
+        </p>
+
+        <div class="step-guide">
+          <div class="step-item">
+            <span class="step-number">1</span>
+            <p>Crea tu cuenta gratuita en <a href="https://dataspace.copernicus.eu" target="_blank" class="link-cyan">dataspace.copernicus.eu</a></p>
+          </div>
+          <div class="step-item">
+            <span class="step-number">2</span>
+            <p>Genera un cliente OAuth en el dashboard de <strong>Sentinel Hub Services</strong> (obtendrás un <code>client_id</code> y <code>client_secret</code>).</p>
+          </div>
+          <div class="step-item">
+            <span class="step-number">3</span>
+            <p>Agrégalos en el archivo <code>backend/appsettings.json</code>:</p>
+            <pre class="code-preview">
+"Copernicus": &#123;
+  "ClientId": "TU_CLIENT_ID",
+  "ClientSecret": "TU_CLIENT_SECRET"
+&#125;</pre>
+          </div>
+        </div>
+
+        <div class="modal-note">
+          <span>💡</span>
+          <p>
+            <strong>¿Sin credenciales en este momento?</strong> No hay problema: la aplicación opera automáticamente con un <strong>motor de simulación multiespectral calibrado</strong> que reproduce exactamente las firmas espectrales de Sentinel-2 para huaicos, incendios e inundaciones.
+          </p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-primary" (click)="toggleCredsModal()">Entendido</button>
+      </div>
+    </div>
+  </div>
+</div>
