@@ -29,7 +29,7 @@ public class SentinelCatalogService : ISentinelCatalogService
         BoundingBox bbox, 
         DateTime targetDate, 
         int maxCloudCoverage = 30, 
-        int searchDaysWindow = 7, 
+        int searchDaysWindow = 12, 
         CancellationToken cancellationToken = default)
     {
         var token = await _authService.GetAccessTokenAsync(cancellationToken);
@@ -45,16 +45,13 @@ public class SentinelCatalogService : ISentinelCatalogService
         var dateFrom = targetDate.AddDays(-searchDaysWindow).ToString("yyyy-MM-ddTHH:mm:ssZ");
         var dateTo = targetDate.AddDays(searchDaysWindow).ToString("yyyy-MM-ddTHH:mm:ssZ");
 
+        // Payload compatible with Copernicus Data Space STAC / Sentinel Hub Catalog 1.0.0
         var payload = new
         {
             collections = new[] { "sentinel-2-l2a" },
             datetime = $"{dateFrom}/{dateTo}",
             bbox = bbox.ToArray(),
-            limit = 10,
-            query = new Dictionary<string, object>
-            {
-                { "eo:cloud_cover", new { lte = maxCloudCoverage } }
-            }
+            limit = 25
         };
 
         try
@@ -78,13 +75,14 @@ public class SentinelCatalogService : ISentinelCatalogService
             var features = root?["features"]?.AsArray();
             if (features == null || features.Count == 0)
             {
-                _logger.LogInformation("No scenes found in Catalog for window {From} to {To} with cloud cover <= {MaxCloud}%", dateFrom, dateTo, maxCloudCoverage);
+                _logger.LogInformation("No scenes found in Catalog for window {From} to {To}", dateFrom, dateTo);
                 return null;
             }
 
-            // Find scene closest to target date with acceptable cloud cover
             CatalogScene? bestScene = null;
-            double smallestDifferenceDays = double.MaxValue;
+            double bestScore = double.MaxValue;
+            CatalogScene? lowestCloudScene = null;
+            double lowestCloud = double.MaxValue;
 
             foreach (var feature in features)
             {
@@ -98,24 +96,42 @@ public class SentinelCatalogService : ISentinelCatalogService
 
                 if (DateTime.TryParse(dtStr, out var sceneDt))
                 {
-                    var diffDays = Math.Abs((sceneDt - targetDate).TotalDays);
-                    // Weight cloud coverage slightly into score
-                    var score = diffDays + (cloudCover / 100.0 * 2.0);
-
-                    if (score < smallestDifferenceDays)
+                    var scene = new CatalogScene
                     {
-                        smallestDifferenceDays = score;
-                        bestScene = new CatalogScene
+                        Id = id,
+                        DateTime = sceneDt,
+                        CloudCover = Math.Round(cloudCover, 1)
+                    };
+
+                    if (cloudCover < lowestCloud)
+                    {
+                        lowestCloud = cloudCover;
+                        lowestCloudScene = scene;
+                    }
+
+                    // Score balances closeness to target date with low cloud coverage
+                    var diffDays = Math.Abs((sceneDt - targetDate).TotalDays);
+                    var score = diffDays * 1.5 + (cloudCover / 10.0);
+
+                    // Prefer scenes within the user cloud tolerance if available
+                    if (cloudCover <= maxCloudCoverage)
+                    {
+                        if (score < bestScore)
                         {
-                            Id = id,
-                            DateTime = sceneDt,
-                            CloudCover = Math.Round(cloudCover, 1)
-                        };
+                            bestScore = score;
+                            bestScene = scene;
+                        }
                     }
                 }
             }
 
-            return bestScene;
+            // If no scene meets strict maxCloudCoverage, fallback to lowest cloud scene available
+            var finalScene = bestScene ?? lowestCloudScene;
+            if (finalScene != null)
+            {
+                _logger.LogInformation("Catalog selected scene {Id} from {Date} (Cloud: {Cloud}%)", finalScene.Id, finalScene.DateTime, finalScene.CloudCover);
+            }
+            return finalScene;
         }
         catch (Exception ex)
         {

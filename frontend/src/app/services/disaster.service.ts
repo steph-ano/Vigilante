@@ -43,7 +43,7 @@ export class DisasterService {
         eventType: 'huaico',
         description: 'Activación y arrastre masivo de lodo y detritos por las quebradas Carossio y Quirio hacia el valle del río Rímac.',
         dateBefore: '2023-03-01T00:00:00Z',
-        dateAfter: '2023-03-18T00:00:00Z',
+        dateAfter: '2023-03-21T00:00:00Z',
         bbox: { minX: -76.735, minY: -11.955, maxX: -76.675, maxY: -11.910 },
         centerLat: -11.935,
         centerLng: -76.705,

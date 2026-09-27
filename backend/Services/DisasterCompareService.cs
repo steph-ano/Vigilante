@@ -47,45 +47,59 @@ public class DisasterCompareService : IDisasterCompareService
         {
             _logger.LogInformation("CDSE credentials detected. Searching Copernicus Catalog for scenes near {Before} and {After}", beforeTarget, afterTarget);
 
-            // 1. Check Catalog for best Sentinel-2 scenes
+            // 1. Check Catalog for best Sentinel-2 scenes in window
             var beforeScene = await _catalogService.FindBestSceneAsync(
                 request.Bbox, 
                 beforeTarget, 
                 request.MaxCloudCoverage, 
-                searchDaysWindow: 12, 
+                searchDaysWindow: 14, 
                 cancellationToken);
 
             var afterScene = await _catalogService.FindBestSceneAsync(
                 request.Bbox, 
                 afterTarget, 
                 request.MaxCloudCoverage, 
-                searchDaysWindow: 12, 
+                searchDaysWindow: 14, 
                 cancellationToken);
 
             var beforeDate = beforeScene?.DateTime ?? beforeTarget;
             var afterDate = afterScene?.DateTime ?? afterTarget;
 
+            var beforeFrom = beforeDate.Date;
+            var beforeTo = beforeDate.Date.AddDays(1).AddSeconds(-1);
+
+            var afterFrom = afterDate.Date;
+            var afterTo = afterDate.Date.AddDays(1).AddSeconds(-1);
+
             // 2. Fetch or retrieve from cache
-            var keyBefore = _cacheService.GenerateKey(request.Bbox, beforeDate.AddDays(-1), beforeDate.AddDays(1), request.VisualizationMode, request.Width, request.Height);
-            var keyAfter = _cacheService.GenerateKey(request.Bbox, afterDate.AddDays(-1), afterDate.AddDays(1), request.VisualizationMode, request.Width, request.Height);
+            var keyBefore = _cacheService.GenerateKey(request.Bbox, beforeFrom, beforeTo, request.VisualizationMode, request.Width, request.Height);
+            var keyAfter = _cacheService.GenerateKey(request.Bbox, afterFrom, afterTo, request.VisualizationMode, request.Width, request.Height);
 
             beforeImg = await _cacheService.GetCachedImageAsync(keyBefore);
             if (beforeImg == null)
             {
                 beforeImg = await _processService.FetchSatelliteImageAsync(
                     request.Bbox,
-                    beforeDate.AddDays(-1),
-                    beforeDate.AddDays(1),
+                    beforeFrom,
+                    beforeTo,
                     request.VisualizationMode,
                     request.Width,
                     request.Height,
-                    request.MaxCloudCoverage,
+                    maxCloudCoverage: 100, // Catalog already selected optimal scene
                     cancellationToken);
+
+                // Check for empty/black image returned by Sentinel Hub (typically < 1000 bytes base64)
+                if (beforeImg != null && beforeImg.ImageBase64.Length < 1200)
+                {
+                    _logger.LogWarning("Sentinel Hub returned black/empty tile for before date {Date}", beforeDate);
+                    beforeImg = null;
+                }
 
                 if (beforeImg != null)
                 {
                     beforeImg.CloudCoverPercentage = beforeScene?.CloudCover;
-                    beforeImg.SceneId = beforeScene?.Id;
+                    beforeImg.SceneId = beforeScene?.Id ?? $"S2_{beforeDate:yyyyMMdd}";
+                    beforeImg.AcquiredDate = beforeDate;
                     beforeImg.Title = $"Antes ({beforeDate:yyyy-MM-dd})";
                     await _cacheService.SetCachedImageAsync(keyBefore, beforeImg);
                 }
@@ -96,18 +110,26 @@ public class DisasterCompareService : IDisasterCompareService
             {
                 afterImg = await _processService.FetchSatelliteImageAsync(
                     request.Bbox,
-                    afterDate.AddDays(-1),
-                    afterDate.AddDays(1),
+                    afterFrom,
+                    afterTo,
                     request.VisualizationMode,
                     request.Width,
                     request.Height,
-                    request.MaxCloudCoverage,
+                    maxCloudCoverage: 100,
                     cancellationToken);
+
+                // Check for empty/black image returned by Sentinel Hub
+                if (afterImg != null && afterImg.ImageBase64.Length < 1200)
+                {
+                    _logger.LogWarning("Sentinel Hub returned black/empty tile for after date {Date}", afterDate);
+                    afterImg = null;
+                }
 
                 if (afterImg != null)
                 {
                     afterImg.CloudCoverPercentage = afterScene?.CloudCover;
-                    afterImg.SceneId = afterScene?.Id;
+                    afterImg.SceneId = afterScene?.Id ?? $"S2_{afterDate:yyyyMMdd}";
+                    afterImg.AcquiredDate = afterDate;
                     afterImg.Title = $"Después ({afterDate:yyyy-MM-dd})";
                     await _cacheService.SetCachedImageAsync(keyAfter, afterImg);
                 }
@@ -115,12 +137,13 @@ public class DisasterCompareService : IDisasterCompareService
 
             if (beforeImg != null && afterImg != null)
             {
-                message = "Imágenes procesadas exitosamente desde CDSE Sentinel Hub Process API.";
+                var cloudInfo = $"Nubosidad: Antes {beforeImg.CloudCoverPercentage ?? 0}% | Después {afterImg.CloudCoverPercentage ?? 0}%";
+                message = $"Imágenes Sentinel-2 L2A procesadas en vivo desde Copernicus CDSE. ({cloudInfo})";
             }
             else
             {
                 _logger.LogWarning("One or both images could not be fetched from live CDSE API. Falling back to calibrated simulation.");
-                message = "No se encontraron escenas óptimas sin nubes en CDSE para este intervalo. Generando simulación calibrada.";
+                message = "No se encontraron escenas óptimas de Sentinel-2 sin nubes en la órbita de esas fechas. Mostrando simulación calibrada de alta resolución.";
             }
         }
 

@@ -15,7 +15,7 @@ public class DisasterPresetService : IDisasterPresetService
             EventType = "huaico",
             Description = "Activación y arrastre masivo de lodo y detritos por las quebradas Carossio y Quirio hacia el valle del río Rímac.",
             DateBefore = new DateTime(2023, 3, 1, 0, 0, 0, DateTimeKind.Utc),
-            DateAfter = new DateTime(2023, 3, 18, 0, 0, 0, DateTimeKind.Utc),
+            DateAfter = new DateTime(2023, 3, 21, 0, 0, 0, DateTimeKind.Utc),
             Bbox = new BoundingBox { MinX = -76.735, MinY = -11.955, MaxX = -76.675, MaxY = -11.910 },
             CenterLat = -11.935,
             CenterLng = -76.705,
