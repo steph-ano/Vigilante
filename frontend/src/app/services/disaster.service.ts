@@ -1,7 +1,14 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, catchError, of } from 'rxjs';
+import { Observable, catchError, of, map } from 'rxjs';
 import { CompareRequest, CompareResponse, DisasterPreset, ApiStatus } from '../models/disaster.models';
+
+export interface LocationSearchResult {
+  displayName: string;
+  lat: number;
+  lng: number;
+  bbox?: number[];
+}
 
 @Injectable({
   providedIn: 'root'
@@ -33,6 +40,31 @@ export class DisasterService {
     return this.http.post<CompareResponse>(`${this.apiUrl}/disaster/compare`, request);
   }
 
+  searchLocations(query: string): Observable<LocationSearchResult[]> {
+    if (!query || query.trim().length < 2) return of([]);
+
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=pe&limit=6&addressdetails=1`;
+    return this.http.get<any[]>(url).pipe(
+      map(results => {
+        return results.map(item => ({
+          displayName: item.display_name,
+          lat: parseFloat(item.lat),
+          lng: parseFloat(item.lon),
+          bbox: item.boundingbox ? [
+            parseFloat(item.boundingbox[0]),
+            parseFloat(item.boundingbox[1]),
+            parseFloat(item.boundingbox[2]),
+            parseFloat(item.boundingbox[3])
+          ] : undefined
+        }));
+      }),
+      catchError(err => {
+        console.warn('Error searching location via geocoding:', err);
+        return of([]);
+      })
+    );
+  }
+
   private getLocalFallbackPresets(): DisasterPreset[] {
     return [
       {
@@ -50,6 +82,22 @@ export class DisasterService {
         defaultZoom: 14,
         defaultVisualization: 'false_color_swir',
         historicalImpact: 'Afectación directa a la Carretera Central y cientos de viviendas soterradas con sedimento aluvial.'
+      },
+      {
+        id: 'secocha-aluvion-2023',
+        title: 'Aluvión Secocha / Camaná',
+        location: 'Mariano Nicolás Valcárcel',
+        department: 'Arequipa',
+        eventType: 'huaico',
+        description: 'Flujo de detritos masivo arrasando campamentos mineros, viviendas y talleres en la quebrada San Martín y Secocha.',
+        dateBefore: '2023-01-20T00:00:00Z',
+        dateAfter: '2023-02-12T00:00:00Z',
+        bbox: { minX: -73.180, minY: -16.020, maxX: -73.110, maxY: -15.960 },
+        centerLat: -15.990,
+        centerLng: -73.145,
+        defaultZoom: 13,
+        defaultVisualization: 'false_color_swir',
+        historicalImpact: 'Uno de los huaicos más letales del sur peruano con más de 18 fallecidos y miles de damnificados.'
       },
       {
         id: 'piura-inundacion-2023',
@@ -84,6 +132,38 @@ export class DisasterService {
         historicalImpact: 'Pérdida de cientos de hectáreas de cobertura vegetal protegida y severa degradación del suelo.'
       },
       {
+        id: 'huascaran-incendio-2024',
+        title: 'Incendio P.N. Huascarán',
+        location: 'Cordillera Blanca / Carhuaz',
+        department: 'Áncash',
+        eventType: 'incendio',
+        description: 'Incendio forestal afectando bosques nativos de queñual y pastizales en zonas de amortiguamiento del Parque Nacional Huascarán.',
+        dateBefore: '2024-08-01T00:00:00Z',
+        dateAfter: '2024-08-28T00:00:00Z',
+        bbox: { minX: -77.650, minY: -9.350, maxX: -77.520, maxY: -9.220 },
+        centerLat: -9.285,
+        centerLng: -77.585,
+        defaultZoom: 13,
+        defaultVisualization: 'nbr',
+        historicalImpact: 'Grave afectación de ecosistemas de alta montaña y pérdida de hábitat de biodiversidad andina protegida.'
+      },
+      {
+        id: 'ventanilla-petroleo-2022',
+        title: 'Derrame de Petróleo Ventanilla',
+        location: 'Bahía de Ventanilla y Ancón',
+        department: 'Lima',
+        eventType: 'inundacion',
+        description: 'Derrame masivo de más de 11,000 barriles de crudo en la refinería La Pampilla extendiéndose hacia el norte por la corriente marina.',
+        dateBefore: '2022-01-10T00:00:00Z',
+        dateAfter: '2022-01-25T00:00:00Z',
+        bbox: { minX: -77.200, minY: -11.920, maxX: -77.110, maxY: -11.830 },
+        centerLat: -11.875,
+        centerLng: -77.155,
+        defaultZoom: 13,
+        defaultVisualization: 'false_color_swir',
+        historicalImpact: 'Mayor catástrofe ambiental en la costa peruana contemporánea afectando 25 playas e islas guaneras.'
+      },
+      {
         id: 'punta-hermosa-2023',
         title: 'Huaico Quebrada Malanche',
         location: 'Punta Hermosa, Lima Sur',
@@ -98,6 +178,22 @@ export class DisasterService {
         defaultZoom: 14,
         defaultVisualization: 'false_color_swir',
         historicalImpact: 'Inundación del casco urbano balneario y vertimiento masivo de sedimento en la bahía.'
+      },
+      {
+        id: 'iquitos-inundacion-2023',
+        title: 'Crecida Río Amazonas / Belén',
+        location: 'Iquitos, Maynas',
+        department: 'Loreto',
+        eventType: 'inundacion',
+        description: 'Crecida estacional extraordinaria del río Amazonas y río Itaya anegando zonas bajas y comunidades ribereñas.',
+        dateBefore: '2023-02-15T00:00:00Z',
+        dateAfter: '2023-04-25T00:00:00Z',
+        bbox: { minX: -73.280, minY: -3.780, maxX: -73.200, maxY: -3.710 },
+        centerLat: -3.745,
+        centerLng: -73.240,
+        defaultZoom: 13,
+        defaultVisualization: 'ndwi',
+        historicalImpact: 'Afectación a miles de familias en la zona baja de Belén y comunidades nativas de la ribera del Amazonas.'
       }
     ];
   }
